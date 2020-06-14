@@ -6,15 +6,20 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder
 import nltk
 from nltk.corpus import stopwords
+from decimal import Decimal
 
 
 class Dataset:
-    def __init__(self, data_path, vocab_path, col_order, label, save_mod=True):
+    def __init__(self, data_path, vocab_path, col_order, save_mod=True,
+                 is_stop_model=False, is_word_length_model=False, is_word_freq_model=False):
         self.data_path = data_path
         self.vocab_path = vocab_path
         self.col_order = col_order
-        self.labels = label
         self.save_mod = save_mod
+
+        self.is_stop_model = is_stop_model
+        self.is_word_length_model = is_word_length_model
+        self.is_word_freq_model = is_word_freq_model
         self.x_cols = ['Title', 'year']
 
         self.data_frame, self.x, self.y = self.get_data()
@@ -29,7 +34,9 @@ class Dataset:
 
     def get_tokens(self):
         stop_words = set(stopwords.words('english'))
-        vote_bin = {"class 0": [], "class 1": [], "class 2": []}
+        vote_bin = {}
+        for i in range(len(self.encoder.classes_)):
+            vote_bin[f"class {i}"] = []
         data = self.data_frame[self.x_cols].to_numpy()
         # Advance the loop simultaneously with both labels and titles,
         # and add the words to the respective classes in order.
@@ -41,13 +48,15 @@ class Dataset:
                     # Testing the conditions of being a word
                     if token.isnumeric() or not token.isalpha():
                         continue
-                    elif token.lower() in stop_words:
-                        continue
                     elif token.lower() == "ask" or token.lower() == "show":
                         seq += [token.lower()]
                         continue
                     elif token.lower() == "hn" and seq != []:
                         vote_bin[f"class {cls}"].append(f"{seq[0]}_hn")
+                    elif self.is_stop_model and token.lower() in stop_words:
+                        continue
+                    elif self.is_word_length_model and (len(token) >= 9 or len(token) <= 2):
+                        continue
                     else:
                         vote_bin[f"class {cls}"].append(token.lower())
         return vote_bin
@@ -55,9 +64,6 @@ class Dataset:
     def get_title_tokens(self, year):
         stop_words = set(stopwords.words('english'))
         data = self.data_frame[self.x_cols].to_numpy()
-        # Advance the loop simultaneously with both labels and titles,
-        # and add the words to the respective classes in order.
-
         titles_labels = []
         for index, (cls, title_year) in enumerate(zip(self.y, data)):
             seq = []
@@ -68,13 +74,15 @@ class Dataset:
                     # Testing the conditions of being a word
                     if token.isnumeric() or not token.isalpha():
                         continue
-                    elif token.lower() in stop_words:
-                        continue
                     elif token.lower() == "ask" or token.lower() == "show":
                         seq += [token.lower()]
                         continue
                     elif token.lower() == "hn" and seq != []:
                         title.append(f"{seq[0]}_hn")
+                    elif self.is_stop_model and token.lower() in stop_words:
+                        continue
+                    elif self.is_word_length_model and (len(token) >= 9 or len(token) <= 2):
+                        continue
                     else:
                         title.append(token.lower())
                 titles_labels.append([index, title_year[0], title, cls])
@@ -83,10 +91,9 @@ class Dataset:
     def get_vocab(self):
         word_list = list(np.concatenate(list(self.vote_bin.values())))
         word_list_sorted = sorted(set(np.array(word_list)), key=str.lower)
-        f = open(self.vocab_path, 'w')
-        for word in word_list_sorted:
-            f.write(str(word) + "\n")
-        f.close()
+        with open(self.vocab_path, 'w', encoding="utf-8") as f:
+            for word in word_list_sorted:
+                f.write(str(word) + "\n")
         return word_list_sorted
 
     def encode(self):
@@ -96,7 +103,9 @@ class Dataset:
         return le_y, y
 
     def count_tokens(self):
-        count_dict = {"class 0": [], "class 1": [], "class 2": [], "class 3": []}
+        count_dict = {}
+        for i in range(len(self.encoder.classes_)):
+            count_dict[f"class {i}"] = []
         words = list(np.concatenate(list(self.vote_bin.values())))
         words_sorted_unrep = sorted(set(np.array(words)), key=str.lower)
         for cls_index, cls in enumerate(list(self.vote_bin.values())):
@@ -111,30 +120,58 @@ class Dataset:
         results = []
 
         for idx, (word, rep) in enumerate(
-                zip(self.vocabulary, np.array(list(self.count_list.values())[:][0:-1]).T.squeeze())):
+                zip(self.vocabulary, np.array(list(self.count_list.values())).T.squeeze())):
             temp = []
+            st = np.std(class_word_dist)
             for i, cls in enumerate(rep):
-                prob = (cls + 1000) / (class_word_dist[i] + total_unique_words)
+                prob = (cls + 1) / (class_word_dist[i] + total_unique_words)
                 temp.append(prob)
             results.append(temp)
         return results, class_word_dist
 
+    def save_model(self):
+        if self.is_stop_model:
+            path = "output/stopword-model.txt"
+        elif self.is_word_length_model:
+            path = "output/wordlength-model.txt"
+        elif self.is_word_freq_model:
+            path = "output/wordfreq-model.txt"
+        else:
+            path = "output/model-2018.txt"
+        with open(path, "w", encoding="utf-8") as f:
+            for index, (word, prob) in enumerate(zip(self.vocabulary, self.prob)):
+                f.write(f"{index}  {word}  ")
+                for p in prob:
+                    f.write(f"{p:.3e}  ")
+                f.write("\n")
+
 
 class Train(Dataset):
-    def __init__(self, data_path, vocab_path, train_year, col_order, label):
-        super().__init__(data_path, vocab_path, col_order, label)
+    def __init__(self, data_path, vocab_path, train_year, col_order,
+                 is_stop_model=False, is_word_length_model=False, is_word_freq_model=False):
+        super().__init__(data_path, vocab_path, col_order, is_stop_model, is_word_length_model,
+                         is_word_freq_model)
         self.train_year = train_year
+        self.is_stop_model = is_stop_model
+        self.is_word_length_model = is_word_length_model
+        self.is_word_freq_model = is_word_freq_model
         self.vote_bin = self.get_tokens()
         self.vocabulary = self.get_vocab()
         self.count_list = self.count_tokens()
         self.prob, self.class_counts = self.calc_prob()
+        self.save_model()
 
 
 class Test(Dataset):
-    def __init__(self, data_path, vocab_path, test_year, col_order, label, train):
-        super().__init__(data_path, vocab_path, col_order, label)
+    def __init__(self, data_path, vocab_path, test_year, col_order, train,
+                 is_stop_model=False, is_word_length_model=False, is_word_freq_model=False):
+        super().__init__(data_path, vocab_path, col_order, is_stop_model, is_word_length_model,
+                         is_word_freq_model)
         self.train = train
         self.test_year = test_year
+        self.is_stop_model = is_stop_model
+        self.is_word_length_model = is_word_length_model
+        self.is_word_freq_model = is_word_freq_model
         self.title_tokens = self.get_title_tokens(self.test_year)
         self.results = None
 
@@ -142,7 +179,7 @@ class Test(Dataset):
         results = []
         for index, t_l in enumerate(self.title_tokens):
             cls_prb = []
-            for cls in range(3):
+            for cls in range(len(self.encoder.classes_)):
                 token_prob_list = []
                 for token in t_l[2]:
                     if token in self.train.vocabulary:
@@ -157,13 +194,21 @@ class Test(Dataset):
         self.results = results
 
     def save_result(self):
-        with open('output/baseline-result.txt', 'w', encoding='utf-8') as f:
+        if self.is_stop_model:
+            path = "output/stopword-result.txt"
+        elif self.is_word_length_model:
+            path = "output/wordlength-result.txt"
+        elif self.is_word_freq_model:
+            path = "output/wordfreq-result.txt"
+        else:
+            path = "output/baseline-result.txt"
+        with open(path, 'w', encoding='utf-8') as f:
             for result in self.results:
-                line = f"{result[0]}  " \
-                       f"{result[1]}  " \
-                       f"{self.train.encoder.inverse_transform((result[2],))[0]}  " \
-                       f"{result[3][0]:0.6f}  {result[3][1]:0.6f}  {result[3][2]:0.6f}  " \
-                       f"{self.train.encoder.inverse_transform((result[4],))[0]}  " \
-                       f"{'right' if result[5] == True else 'wrong'}\n"
-                f.write(line)
+                f.write(f"{result[0]}  ")
+                f.write(f"{result[1]}  ")
+                f.write(f"{self.train.encoder.inverse_transform((result[2],))[0]}  ")
+                for i in range(len(result[3])):
+                    f.write(f"{result[3][i]:.3e}  ")
+                f.write(f"{self.train.encoder.inverse_transform((result[4],))[0]}  ")
+                f.write(f"{'right' if result[5] == True else 'wrong'}\n")
 
