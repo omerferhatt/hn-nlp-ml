@@ -59,7 +59,7 @@ class Dataset:
         # and add the words to the respective classes in order.
 
         titles_labels = []
-        for cls, title_year in sorted(zip(self.y, data), key=lambda r: r[0]):
+        for index, (cls, title_year) in enumerate(zip(self.y, data)):
             seq = []
             title = []
             if title_year[1] == year:
@@ -77,7 +77,7 @@ class Dataset:
                         title.append(f"{seq[0]}_hn")
                     else:
                         title.append(token.lower())
-                titles_labels.append([title, cls])
+                titles_labels.append([index, title_year[0], title, cls])
         return titles_labels
 
     def get_vocab(self):
@@ -131,20 +131,39 @@ class Train(Dataset):
 
 
 class Test(Dataset):
-    def __init__(self, data_path, vocab_path, test_year, col_order, label):
+    def __init__(self, data_path, vocab_path, test_year, col_order, label, train):
         super().__init__(data_path, vocab_path, col_order, label)
+        self.train = train
         self.test_year = test_year
         self.title_tokens = self.get_title_tokens(self.test_year)
+        self.results = None
 
-    def evaluate(self, train):
+    def evaluate(self):
         results = []
-        for t_l in self.title_tokens:
+        for index, t_l in enumerate(self.title_tokens):
             cls_prb = []
             for cls in range(3):
                 token_prob_list = []
-                for token in t_l[0]:
-                    if token in train.vocabulary:
-                        token_prob_list.append(train.prob[train.vocabulary.index(token)][cls])
-                cls_prb.append(train.class_counts[cls] / sum(train.class_counts) * np.prod(token_prob_list))
-            results.append([t_l[0], t_l[1], cls_prb.index(max(cls_prb))])
-        return results
+                for token in t_l[2]:
+                    if token in self.train.vocabulary:
+                        token_prob_list.append(self.train.prob[self.train.vocabulary.index(token)][cls])
+                cls_prb.append(self.train.class_counts[cls] / sum(self.train.class_counts) * np.prod(token_prob_list))
+            results.append([index,
+                            t_l[1],
+                            t_l[3],
+                            cls_prb,
+                            cls_prb.index(max(cls_prb)),
+                            cls_prb.index(max(cls_prb)) == t_l[3]])
+        self.results = results
+
+    def save_result(self):
+        with open('output/baseline-result.txt', 'w', encoding='utf-8') as f:
+            for result in self.results:
+                line = f"{result[0]}  " \
+                       f"{result[1]}  " \
+                       f"{self.train.encoder.inverse_transform((result[2],))[0]}  " \
+                       f"{result[3][0]:0.6f}  {result[3][1]:0.6f}  {result[3][2]:0.6f}  " \
+                       f"{self.train.encoder.inverse_transform((result[4],))[0]}  " \
+                       f"{'right' if result[5] == True else 'wrong'}\n"
+                f.write(line)
+
