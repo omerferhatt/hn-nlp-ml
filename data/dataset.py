@@ -124,7 +124,7 @@ class Dataset:
             temp = []
             st = np.std(class_word_dist)
             for i, cls in enumerate(rep):
-                prob = (cls + 1) / (class_word_dist[i] + total_unique_words)
+                prob = (cls + 10) / (class_word_dist[i] + total_unique_words)
                 temp.append(prob)
             results.append(temp)
         return results, class_word_dist
@@ -170,6 +170,19 @@ class Train(Dataset):
     def remove_freq(self, freq):
         freq_count_list = np.array([sum(row) for row in self.freq_list])
         ind = np.where(freq_count_list > freq)[0]
+        self.freq_list = np.array(self.freq_list)[ind]
+        self.freq_count_list = np.array(freq_count_list)[ind]
+        self.vocabulary = np.array(self.vocabulary)[ind]
+        for key, value in zip(self.count_list.keys(), self.count_list.values()):
+            value = np.squeeze(np.array(value))[ind]
+            self.count_list[key] = value
+
+    def remove_perc_freq(self, perc):
+        freq_count_list = np.array([sum(row) for row in self.freq_list])
+        indexed = np.array([list(freq_count_list), list(np.arange(len(freq_count_list)))]).T
+        srt = np.array(sorted(indexed, key=lambda x: x[0], reverse=True))
+        ind_len = int(len(freq_count_list) / perc)
+        ind = srt[ind_len:, 1]
         self.freq_list = np.array(self.freq_list)[ind]
         self.freq_count_list = np.array(freq_count_list)[ind]
         self.vocabulary = np.array(self.vocabulary)[ind]
@@ -232,3 +245,4 @@ class Test(Dataset):
 if __name__ == "__main__":
     print("Creating model")
     tr = Train("../data/hns_2018_2019.csv", "../output/vocabulary.txt", 2018, col_list)
+    tr.remove_perc_freq(10)

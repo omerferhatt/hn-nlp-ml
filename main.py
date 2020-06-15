@@ -2,9 +2,11 @@ import sys
 import argparse
 import time
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import accuracy_score
 from data.dataset import Train, Test
 from data import col_list
-
+from copy import deepcopy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--data-path", type=str, nargs=1, action="store",
@@ -39,22 +41,61 @@ te_length.evaluate()
 te_length.save_result()
 print(f"Elapsed time {time.time() - t1:.2f} seconds.\n")
 
+tr_base = Train(args.data_path, "output/vocabulary.txt", 2018, col_list)
 t1 = time.time()
 freq_list = [1, 5, 10, 15, 20]
-res = []
+res_freq = []
 for freq in freq_list:
-    print(f"Removing frequency<={freq} from base model")
+    print(f"Removing frequency <= {freq} from base model")
     tr_base.remove_freq(freq)
     print(f"Predicting..\n")
     tr_base.prob, tr_base.class_counts = tr_base.calc_prob()
-    te = Test("data/hns_2018_2019.csv", "output/vocabulary.txt", 2019, col_list, train=tr_base)
-    te.evaluate()
+    te_freq = Test("data/hns_2018_2019.csv", "output/vocabulary.txt", 2019, col_list, train=tr_base)
+    te_freq.evaluate()
     temp = []
-    for row in te.results:
-        temp.append([row[1], row[2], row[4], row[5]])
-    res.append([len(tr_base.vocabulary), temp])
-res = np.array(res)
+    for row in te_freq.results:
+        temp.append([row[2], row[4]])
+    res_freq.append([len(tr_base.vocabulary), temp])
+res_freq = np.array(res_freq)
+
+tr = Train(args.data_path, "output/vocabulary.txt", 2018, col_list)
+
+freq_perc = [5, 10, 15, 20, 25]
+res_perc = []
+for freq in freq_perc:
+    print(f"Removing top {freq}% frequency from base model")
+    tr.remove_perc_freq(freq)
+    print(f"Predicting..\n")
+    tr.prob, tr.class_counts = tr.calc_prob()
+    te_perc = Test("data/hns_2018_2019.csv", "output/vocabulary.txt", 2019, col_list, train=tr)
+    te_perc.evaluate()
+    temp = []
+    for row in te_perc.results:
+        temp.append([row[2], row[4]])
+    res_perc.append([len(tr.vocabulary), temp])
+res_perc = np.array(res_perc)
+
+res_freq_acc = []
+for f in res_freq:
+    res_freq_acc.append([f[0], accuracy_score(np.array(f[1])[:, 0], np.array(f[1])[:, 1])])
+res_freq_acc = np.array(res_freq_acc)
+
+res_freq_perc_acc = []
+for f in res_perc:
+    res_freq_perc_acc.append([f[0], accuracy_score(np.array(f[1])[:, 0], np.array(f[1])[:, 1])])
+res_freq_perc_acc = np.array(res_freq_perc_acc)
+
+plt.scatter(res_freq_acc[:, 0], res_freq_acc[:, 1])
+plt.xlabel("Vocab Size")
+plt.ylabel("Accruacy")
+plt.savefig("output/plot_freq.png")
+plt.close()
+plt.scatter(res_freq_perc_acc[:, 0], res_freq_perc_acc[:, 1])
+plt.xlabel("Vocab Size")
+plt.ylabel("Accruacy")
+plt.savefig("output/plot_perc_freq.png")
+plt.close()
 
 print(f"Elapsed time {time.time() - t1:.2f} seconds.\n")
 print("Program terminated")
-sys.exit()
+
