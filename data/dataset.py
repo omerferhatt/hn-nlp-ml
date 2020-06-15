@@ -114,8 +114,8 @@ class Dataset:
         return count_dict
 
     def calc_prob(self):
-        class_word_dist = [len(l) for l in list(self.vote_bin.values())]
-        total_used_words = sum(class_word_dist)
+        class_word_dist = np.sum(self.freq_list, axis=0)
+        total_used_words = np.sum(class_word_dist)
         total_unique_words = len(self.vocabulary)
         results = []
 
@@ -129,6 +129,11 @@ class Dataset:
             results.append(temp)
         return results, class_word_dist
 
+    def get_word_freq(self):
+        freq_list = np.squeeze(np.array(list(self.count_list.values()), dtype=np.int16)).T
+        freq_count_list = np.array([sum(row) for row in freq_list])
+        return freq_list, freq_count_list
+
     def save_model(self):
         if self.is_stop_model:
             path = "output/stopword-model.txt"
@@ -141,8 +146,8 @@ class Dataset:
         with open(path, "w", encoding="utf-8") as f:
             for index, (word, prob) in enumerate(zip(self.vocabulary, self.prob)):
                 f.write(f"{index}  {word}  ")
-                for p in prob:
-                    f.write(f"{p:.3e}  ")
+                for cls, p in enumerate(prob):
+                    f.write(f"{self.freq_list[index, cls]:.2f}  {p:.3e}  ")
                 f.write("\n")
 
 
@@ -158,8 +163,19 @@ class Train(Dataset):
         self.vote_bin = self.get_tokens()
         self.vocabulary = self.get_vocab()
         self.count_list = self.count_tokens()
+        self.freq_list, self.freq_count_list = self.get_word_freq()
         self.prob, self.class_counts = self.calc_prob()
         self.save_model()
+
+    def remove_freq(self, freq):
+        freq_count_list = np.array([sum(row) for row in self.freq_list])
+        ind = np.where(freq_count_list > freq)[0]
+        self.freq_list = np.array(self.freq_list)[ind]
+        self.freq_count_list = np.array(freq_count_list)[ind]
+        self.vocabulary = np.array(self.vocabulary)[ind]
+        for key, value in zip(self.count_list.keys(), self.count_list.values()):
+            value = np.squeeze(np.array(value))[ind]
+            self.count_list[key] = value
 
 
 class Test(Dataset):
@@ -183,7 +199,7 @@ class Test(Dataset):
                 token_prob_list = []
                 for token in t_l[2]:
                     if token in self.train.vocabulary:
-                        token_prob_list.append(self.train.prob[self.train.vocabulary.index(token)][cls])
+                        token_prob_list.append(self.train.prob[list(self.train.vocabulary).index(token)][cls])
                 cls_prb.append(self.train.class_counts[cls] / sum(self.train.class_counts) * np.prod(token_prob_list))
             results.append([index,
                             t_l[1],
@@ -212,3 +228,7 @@ class Test(Dataset):
                 f.write(f"{self.train.encoder.inverse_transform((result[4],))[0]}  ")
                 f.write(f"{'right' if result[5] == True else 'wrong'}\n")
 
+
+if __name__ == "__main__":
+    print("Creating model")
+    tr = Train("../data/hns_2018_2019.csv", "../output/vocabulary.txt", 2018, col_list)
