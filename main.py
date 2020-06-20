@@ -8,12 +8,15 @@ from data.dataset import Train, Test
 from data import col_list
 from copy import deepcopy
 
+# If new dataset going to be used in this program
+# Just change data path otherwise use default values
 parser = argparse.ArgumentParser()
 parser.add_argument("--data-path", type=str, nargs=1, action="store",
                     default="data/hns_2018_2019.csv")
-
+# Parsing arguments from CLI
 args = parser.parse_args()
 
+# Starting time for baseline model
 t1 = time.time()
 print("Creating baseline train model with 2018 data.")
 tr_base = Train(args.data_path, "output/vocabulary.txt", 2018, col_list)
@@ -23,6 +26,7 @@ te_base.evaluate()
 te_base.save_result()
 print(f"Elapsed time {time.time() - t1:.2f} seconds.\n")
 
+# Starting time for stopwords model
 t1 = time.time()
 print("Creating stop-words train model with 2018 data.")
 tr_stop = Train("data/hns_2018_2019.csv", "output/vocabulary_stop.txt", 2018, col_list, is_stop_model=True)
@@ -32,6 +36,7 @@ te_stop.evaluate()
 te_stop.save_result()
 print(f"Elapsed time {time.time() - t1:.2f} seconds.\n")
 
+# Starting time for word length model
 t1 = time.time()
 print("Creating word-length train model with 2018 data.")
 tr_length = Train("data/hns_2018_2019.csv", "output/vocabulary_length.txt", 2018, col_list, is_word_length_model=True)
@@ -41,6 +46,7 @@ te_length.evaluate()
 te_length.save_result()
 print(f"Elapsed time {time.time() - t1:.2f} seconds.\n")
 
+# For task 3 removing frequencies and start to calculate prob of models
 tr_base = Train(args.data_path, "output/vocabulary.txt", 2018, col_list)
 t1 = time.time()
 freq_list = [1, 5, 10, 15, 20]
@@ -58,8 +64,8 @@ for freq in freq_list:
     res_freq.append([len(tr_base.vocabulary), temp])
 res_freq = np.array(res_freq)
 
+# For task 3 removing top frequency percentages and start to calculate prob of models
 tr = Train(args.data_path, "output/vocabulary.txt", 2018, col_list)
-
 freq_perc = [5, 10, 15, 20, 25]
 res_perc = []
 for freq in freq_perc:
@@ -75,6 +81,7 @@ for freq in freq_perc:
     res_perc.append([len(tr.vocabulary), temp])
 res_perc = np.array(res_perc)
 
+# Getting results into lists
 res_freq_acc = []
 for f in res_freq:
     res_freq_acc.append([f[0], accuracy_score(np.array(f[1])[:, 0], np.array(f[1])[:, 1])])
@@ -85,6 +92,7 @@ for f in res_perc:
     res_freq_perc_acc.append([f[0], accuracy_score(np.array(f[1])[:, 0], np.array(f[1])[:, 1])])
 res_freq_perc_acc = np.array(res_freq_perc_acc)
 
+#Plotting results and saving it into output folder
 plt.scatter(res_freq_acc[:, 0], res_freq_acc[:, 1])
 plt.xlabel("Vocab Size")
 plt.ylabel("Accruacy")
@@ -98,4 +106,4 @@ plt.close()
 
 print(f"Elapsed time {time.time() - t1:.2f} seconds.\n")
 print("Program terminated")
-
+sys.exit()
